@@ -18,6 +18,14 @@ from database import bookings_collection
 from routes.valuation_routes import router as valuation_router
 from routes import listings, payments,orders,marketplace,users
 
+IN_SERVER = True  # Set True when running on Render
+
+if IN_SERVER:
+    run_inference = None
+else:
+    from utils.inference import run_inference
+
+
 load_dotenv()
 
 app = FastAPI()
@@ -87,12 +95,11 @@ app.add_middleware(
 
 class BookingRequest(BaseModel):
     userId: str
-    userEmail: str          # keep as str to avoid email_validator issues
-    recycleItem: str
+    userEmail: str          
     recycleItemPrice: float
-    pickupDate: str         # e.g. "2025-11-20"
-    pickupTime: str         # e.g. "14:30"
-    facility: str           # facility name
+    pickupDate: str         
+    pickupTime: str        
+    facility: str          
     fullName: str
     address: str
     phone: int
@@ -169,7 +176,24 @@ def health():
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+
 @app.post("/classify")
+async def classify(file: UploadFile = File(...)):
+    if IN_SERVER:
+        raise HTTPException(status_code=503, detail="AI model disabled in server deployment.")
+
+    contents = await file.read()
+    try:
+        result = await run_inference(contents)
+        return {
+            "predictions": result.get("predictions", []),
+            "category": result.get("category"),
+            "speed": f"{result.get('speed_ms', 0)}ms",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+"""------- @app.post("/classify")
 async def classify(file: UploadFile = File(...)):
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image.")
@@ -196,8 +220,8 @@ async def classify(file: UploadFile = File(...)):
         })
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=str(e)) 
+"""
 
 
 # ---------- NEW BOOKING ENDPOINT ----------
