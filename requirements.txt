@@ -1,6 +1,11 @@
 fastapi
 uvicorn[standard]
-ultralytics
-pillow
-python-multipart
-numpy
+motor
+pydantic
+pydantic[email]
+python-dotenv
+passlib[bcrypt]
+python-jose
+bcrypt
+dnspython
+requests
