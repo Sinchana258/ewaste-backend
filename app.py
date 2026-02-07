@@ -61,9 +61,7 @@ SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME or "")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "*",
+        "https://ewaste-frontend-new11.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
