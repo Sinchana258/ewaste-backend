@@ -12,3 +12,4 @@ dnspython
 requests
 Pillow
 razorpay
+python-multipart
