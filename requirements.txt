@@ -10,3 +10,4 @@ bcrypt
 dnspython
 requests
 Pillow
+razorpay

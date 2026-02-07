@@ -1,62 +1,67 @@
-from fastapi import APIRouter, HTTPException, status
+# backend/auth.py
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import datetime, timedelta
-from jose import jwt, JWTError
+from jose import jwt
 from passlib.context import CryptContext
-from bson import ObjectId
 from dotenv import load_dotenv
 import os
 
-from database import users_collection
+from database import users_collection  # must be Motor async collection
 
-router = APIRouter(prefix="/auth")
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 load_dotenv()
 
 # JWT + Password hashing setup
 JWT_SECRET = os.getenv("JWT_SECRET", "super-secret")
 JWT_ALGO = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 
 pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
 
-def hash_password(password: str):
+
+def hash_password(password: str) -> str:
     try:
         return pwd_context.hash(password)
     except ValueError as e:
         # bcrypt limitation or other hashing issues
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
         # unexpected hashing error
         raise HTTPException(status_code=500, detail="Password hashing failed")
 
 
-
-def verify_password(plain, hashed):
+def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
-def create_access_token(data: dict, expires: timedelta | None = None):
+
+def create_access_token(data: dict, expires: timedelta | None = None) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGO)
 
-# Pydantic Models
+
+# -------- Pydantic Models --------
 class UserCreate(BaseModel):
     fullName: str
     email: str
     password: str
     phone: str
 
+
 class UserLogin(BaseModel):
     email: str
     password: str
+
 
 class UserPublic(BaseModel):
     id: str
     fullName: str
     email: str
     phone: str
+
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -67,6 +72,7 @@ class TokenResponse(BaseModel):
 # ----------- SIGNUP -----------
 @router.post("/signup", response_model=TokenResponse)
 async def signup(user: UserCreate):
+    # check if user exists
     existing = await users_collection.find_one({"email": user.email.lower()})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -99,21 +105,30 @@ async def signup(user: UserCreate):
 # ----------- LOGIN -----------
 @router.post("/login", response_model=TokenResponse)
 async def login(data: UserLogin):
-    user_doc = await users_collection.find_one({"email": data.email.lower()})
-    if not user_doc:
-        raise HTTPException(status_code=400, detail="Invalid email or password")
+    try:
+        user_doc = await users_collection.find_one({"email": data.email.lower()})
+        if not user_doc:
+            raise HTTPException(status_code=400, detail="Invalid email or password")
 
-    if not verify_password(data.password, user_doc["password_hash"]):
-        raise HTTPException(status_code=400, detail="Invalid email or password")
+        if not verify_password(data.password, user_doc["password_hash"]):
+            raise HTTPException(status_code=400, detail="Invalid email or password")
 
-    user_id = str(user_doc["_id"])
-    token = create_access_token({"sub": user_id})
+        user_id = str(user_doc["_id"])
+        token = create_access_token({"sub": user_id})
 
-    public_user = UserPublic(
-        id=user_id,
-        fullName=user_doc["fullName"],
-        email=user_doc["email"],
-        phone=user_doc["phone"],
-    )
+        public_user = UserPublic(
+            id=user_id,
+            fullName=user_doc["fullName"],
+            email=user_doc["email"],
+            phone=user_doc["phone"],
+        )
 
-    return TokenResponse(access_token=token, user=public_user)
+        return TokenResponse(access_token=token, user=public_user)
+
+    except HTTPException:
+        # re-raise known auth errors
+        raise
+    except Exception as e:
+        # TEMP debug log – check your backend console if login fails
+        print("LOGIN ERROR:", repr(e))
+        raise HTTPException(status_code=500, detail="Internal server error during login")

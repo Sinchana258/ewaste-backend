@@ -4,7 +4,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import uuid
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks,Body
 from fastapi.responses import JSONResponse
 from auth import router as auth_router
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,13 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from database import bookings_collection
 from routes.valuation_routes import router as valuation_router
 from routes import listings, payments,orders,marketplace,users
-
-IN_SERVER = True  # Set True when running on Render
-
-if IN_SERVER:
-    run_inference = None
-else:
-    from utils.inference import run_inference
+import razorpay
 
 
 load_dotenv()
@@ -32,7 +26,6 @@ app = FastAPI()
 app.include_router(auth_router)
 app.include_router(valuation_router)
 app.include_router(listings.router)
-app.include_router(payments.router)
 app.include_router(orders.router)
 app.include_router(users.router)
 app.include_router(marketplace.router)
@@ -55,54 +48,36 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME or "")
 
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "ewaste_db")
-MONGO_BOOKINGS_COLLECTION = os.getenv("MONGO_BOOKINGS_COLLECTION", "bookings")
-
-
-
-# ---------- Mongodb connection (local dev)----------
-uri_lower = MONGO_URI.lower()
-
-if "+srv" in uri_lower or "mongodb.net" in uri_lower:
-    mongo_client = AsyncIOMotorClient(
-        MONGO_URI,
-        tls=True,
-        tlsCAFile=certifi.where(),
-        serverSelectionTimeoutMS=10000
-    )
-else:
-    mongo_client = AsyncIOMotorClient(
-        MONGO_URI,
-        serverSelectionTimeoutMS=10000
-    )
-
-mongo_db = mongo_client[MONGO_DB_NAME]
-bookings_collection = mongo_db[MONGO_BOOKINGS_COLLECTION]
-
 
 # ---------- Middleware ----------
 
 app.add_middleware(
     CORSMiddleware,
-      allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],  # later you can change to [FRONTEND_URL]
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "*",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
 # ---------- MODELS ----------
 
 class BookingRequest(BaseModel):
     userId: str
-    userEmail: str          
-    recycleItemPrice: float
-    pickupDate: str         
-    pickupTime: str        
-    facility: str          
+    userEmail: str
     fullName: str
     address: str
-    phone: int
+    phone: str
+    pickupDate: str
+    pickupTime: str
+    facility: str
+    recycleItemPrice: float
+    recycleItem: str | None = None  
+
 
 
 # ---------- EMAIL CONFIG ----------
@@ -158,10 +133,10 @@ E-Cycle Team
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.sendmail(FROM_EMAIL, [booking.userEmail], msg.as_string())
-        print(f"✅ Booking confirmation email sent to {booking.userEmail}")
+        print(f" Booking confirmation email sent to {booking.userEmail}")
     except Exception as e:
         # Don't crash the app if email fails
-        print("❌ Error sending booking email:", e)
+        print(" Error sending booking email:", e)
 
 
 # ---------- EXISTING ENDPOINTS ----------
@@ -178,22 +153,6 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 @app.post("/classify")
-async def classify(file: UploadFile = File(...)):
-    if IN_SERVER:
-        raise HTTPException(status_code=503, detail="AI model disabled in server deployment.")
-
-    contents = await file.read()
-    try:
-        result = await run_inference(contents)
-        return {
-            "predictions": result.get("predictions", []),
-            "category": result.get("category"),
-            "speed": f"{result.get('speed_ms', 0)}ms",
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-"""------- @app.post("/classify")
 async def classify(file: UploadFile = File(...)):
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image.")
@@ -221,7 +180,6 @@ async def classify(file: UploadFile = File(...)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 
-"""
 
 
 # ---------- NEW BOOKING ENDPOINT ----------
@@ -240,22 +198,81 @@ async def create_booking(booking: BookingRequest, background_tasks: BackgroundTa
     result = await bookings_collection.insert_one(booking_doc)
     booking_id = str(result.inserted_id)
 
-    # Motor has now added `_id: ObjectId(...)` into booking_doc
-    # We don't want to return raw ObjectId to the client
-    # Option 1: remove it entirely
+    # Motor  added `_id: ObjectId(...)` into booking_doc
+   
     booking_doc.pop("_id", None)
 
-    # (Optional) you can expose it as a normal string id if you want:
-    # booking_doc["id"] = booking_id
+   
 
     print(" New booking stored in Mongo:", booking_doc, " -> _id:", booking_id)
 
     # Send email in background
     background_tasks.add_task(send_booking_email, booking)
 
-    # Now everything in this object is JSON serializable
     return {
         "message": "Booking created successfully",
         "bookingId": booking_id,
         "booking": booking_doc,
     }
+
+
+
+
+# ... Payment gateway  ...
+
+
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
+
+razorpay_client = None
+if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
+    razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
+
+@app.post("/payments/create-order")
+async def create_payment_order(body: dict = Body(...)):
+    """
+    body is expected like:
+    {
+      "amount": 2500,          # rupees
+      "currency": "INR",
+      "receipt": "order_rcpt_...",
+      "notes": { "email": "..." }
+    }
+    """
+    if razorpay_client is None:
+        raise HTTPException(status_code=500, detail="Razorpay client not configured")
+
+    try:
+        # Safely read amount (default 0)
+        amount_rupees = int(body.get("amount", 0) or 0)
+        if amount_rupees <= 0:
+            raise HTTPException(status_code=400, detail="Invalid amount")
+
+        currency = body.get("currency", "INR")
+        receipt = body.get("receipt")
+        notes = body.get("notes") or {}
+
+        order_data = {
+            "amount": amount_rupees * 100,  # Razorpay needs paise
+            "currency": currency,
+            "payment_capture": 1,
+            "notes": notes,
+        }
+        if receipt:
+            order_data["receipt"] = receipt
+
+        order = razorpay_client.order.create(order_data)
+
+        return {
+            "id": order["id"],
+            "amount": order["amount"],
+            "currency": order["currency"],
+            "status": order["status"],
+            "razorpay_key_id": RAZORPAY_KEY_ID,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Razorpay error:", e)
+        raise HTTPException(status_code=500, detail="Failed to create Razorpay order")

@@ -19,7 +19,7 @@ if "+srv" in uri_lower or "mongodb.net" in uri_lower:
     )
     using_tls = True
 else:
-    # Local dev -> don't force TLS
+    # Local dev 
     client = AsyncIOMotorClient(
         MONGO_URI,
         serverSelectionTimeoutMS=10000,

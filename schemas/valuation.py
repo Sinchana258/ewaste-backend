@@ -28,7 +28,7 @@ class ValueEstimateRequest(BaseModel):
     # optional component breakdown
     components: Optional[List[ComponentShare]] = None
 
-    # city / region if you want to vary prices later
+
     location: Optional[str] = None
 
 
