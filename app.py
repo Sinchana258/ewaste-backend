@@ -62,7 +62,6 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "*",
-        "https://ewaste-frontend-self.vercel.app/",
     ],
     allow_credentials=True,
     allow_methods=["*"],
