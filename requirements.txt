@@ -5,11 +5,13 @@ motor
 pydantic
 pydantic[email]
 python-dotenv
-passlib[bcrypt]
 python-jose
-bcrypt
 dnspython
 requests
 Pillow
 razorpay
 python-multipart
+passlib==1.7.4
+argon2-cffi==23.1.0
+
+
