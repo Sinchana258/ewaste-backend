@@ -36,11 +36,16 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin="https://ewaste-frontend-bice.vercel.app",
+    allow_origins=[
+        "https://ewaste-frontend-bice.vercel.app",
+        "https://ewaste-frontend-psi.vercel.app",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 app.include_router(auth_router)
 app.include_router(valuation_router)
