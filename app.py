@@ -30,6 +30,18 @@ def run_ml_inference(image_bytes: bytes):
 load_dotenv()
 
 app = FastAPI()
+
+
+# ---------- Middleware ----------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(auth_router)
 app.include_router(valuation_router)
 app.include_router(listings.router)
@@ -55,17 +67,6 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME or "")
 
 
-
-# ---------- Middleware ----------
-
-app.add_middleware(
-    CORSMiddleware,
-    
-    allow_origin_regex=r"https://.*\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 # ---------- MODELS ----------
