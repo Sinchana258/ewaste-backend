@@ -19,10 +19,10 @@ JWT_ALGO = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 
 pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-    bcrypt__rounds=12
+    schemes=["argon2"],
+    deprecated="auto"
 )
+
 print("PWD SCHEMES:", pwd_context.schemes())
 
 
@@ -32,7 +32,7 @@ def hash_password(password: str) -> str:
     try:
         return pwd_context.hash(password)
     except ValueError as e:
-        # bcrypt limitation or other hashing issues
+        # argan2 limitation or other hashing issues
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
         # unexpected hashing error
