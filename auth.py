@@ -18,7 +18,13 @@ JWT_SECRET = os.getenv("JWT_SECRET", "super-secret")
 JWT_ALGO = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__rounds=12
+)
+print("PWD SCHEMES:", pwd_context.schemes())
+
 
 
 

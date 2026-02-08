@@ -62,7 +62,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "*",
-        "https://ewaste-frontend-new11.vercel.app",
+        "https://ewaste-frontend-self.vercel.app/",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -183,7 +183,7 @@ async def classify(file: UploadFile = File(...)):
 
     try:
         with open(file_path, "rb") as img_file:
-            result = run_ml_inference(img_file.read())
+            result = await run_ml_inference(img_file.read())
 
         return {
             "predictions": result.get("predictions", []),
