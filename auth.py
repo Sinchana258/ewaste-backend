@@ -19,13 +19,20 @@ JWT_ALGO = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 
 pwd_context = CryptContext(
-    schemes=["argon2"],
+    schemes=["argon2","bcrypt"],
     deprecated="auto"
 )
 
 print("PWD SCHEMES:", pwd_context.schemes())
 
-
+# if pwd_context.verify(password, stored_hash):
+#     # if old bcrypt hash
+#     if stored_hash.startswith("$2b$"):
+#         new_hash = pwd_context.hash(password)
+#         users.update_one(
+#             {"_id": user["_id"]},
+#             {"$set": {"password_hash": new_hash}}
+#         )
 
 
 def hash_password(password: str) -> str:
